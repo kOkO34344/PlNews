@@ -27,9 +27,10 @@ class AnalysisOutcome:
 async def analyze_cluster(client: LLMClient, cluster: StoryClusterIn,
                           bodies: dict[str, str]) -> AnalysisOutcome:
     user = prompts.build_analysis_user_prompt(cluster, bodies)
+    embed_schema = not getattr(client, "enforces_schema", False)
     try:
         result = await client.complete_json(
-            system=prompts.SYSTEM_ANALYSIS,
+            system=prompts.analysis_system(include_schema=embed_schema),
             user=user,
             schema=StoryAnalysis,
             model=settings.llm_model_analysis,

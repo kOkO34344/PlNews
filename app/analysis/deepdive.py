@@ -26,9 +26,10 @@ async def generate_deep_dive(client: LLMClient, item: DigestItem, cluster: Story
                              bodies: dict[str, str],
                              prior_context: list[dict] | None = None) -> DeepDive | None:
     user = prompts.build_deepdive_user_prompt(cluster, item.analysis, bodies, prior_context)
+    embed_schema = not getattr(client, "enforces_schema", False)
     try:
         result = await client.complete_json(
-            system=prompts.SYSTEM_DEEPDIVE,
+            system=prompts.deepdive_system(include_schema=embed_schema),
             user=user,
             schema=DeepDive,
             model=settings.llm_model_deepdive,

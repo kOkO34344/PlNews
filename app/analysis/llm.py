@@ -95,6 +95,10 @@ def extract_json(text: str) -> dict[str, Any]:
 class AnthropicClient:
     """Bounded-concurrency Anthropic client that returns validated Pydantic models."""
 
+    #: False even when output_config.format is on: that can be switched off at runtime if
+    #: the schema is rejected, and the prompt copy is what catches the run when it is.
+    enforces_schema = False
+
     def __init__(self, api_key: str | None = None, max_concurrency: int | None = None,
                  token_budget: int | None = None, structured_output: bool = True) -> None:
         from anthropic import AsyncAnthropic  # local import keeps import-time cheap
@@ -184,6 +188,8 @@ class AnthropicClient:
 class StubClient:
     """Offline client for tests and dry runs: returns schema-valid filler."""
 
+    enforces_schema = False
+
     def __init__(self, factory=None) -> None:
         self.factory = factory
         self.usage = Usage()
@@ -201,6 +207,18 @@ class StubClient:
 
 
 def get_llm_client() -> LLMClient:
-    if not settings.anthropic_api_key:
-        log.warning("llm.no_api_key", msg="ANTHROPIC_API_KEY unset — LLM calls will fail")
+    """Pick a backend. Defaults to the Claude Code subscription; falls back to the
+    API only when the CLI is absent and a key is present."""
+    if settings.llm_backend == "claude_code":
+        from app.analysis.claude_code import ClaudeCodeClient, ClaudeCodeUnavailable
+
+        try:
+            return ClaudeCodeClient()
+        except ClaudeCodeUnavailable:
+            if not settings.anthropic_api_key or settings.anthropic_api_key.endswith("..."):
+                raise
+            log.warning("llm.claude_code_unavailable", msg="falling back to the API backend")
+
+    if not settings.anthropic_api_key or settings.anthropic_api_key.endswith("..."):
+        log.warning("llm.no_api_key", msg="ANTHROPIC_API_KEY unset — API calls will fail")
     return AnthropicClient()

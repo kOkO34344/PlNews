@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import Field, field_validator
@@ -18,6 +19,9 @@ class Settings(BaseSettings):
     digest_hour: int = 7
 
     # LLM
+    # "claude_code" runs through the local `claude` CLI on your Claude Code
+    # subscription; "api" calls the Anthropic API and bills credits.
+    llm_backend: Literal["claude_code", "api"] = "claude_code"
     anthropic_api_key: str = ""
     llm_model_analysis: str = "claude-sonnet-5"
     llm_model_deepdive: str = "claude-opus-5"

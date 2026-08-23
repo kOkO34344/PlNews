@@ -73,7 +73,32 @@ def _schema(model: type) -> str:
 # --------------------------------------------------------------------------- #
 # 1. Per-story analysis
 # --------------------------------------------------------------------------- #
-SYSTEM_ANALYSIS = f"""\
+_CONTRACT_WITH_SCHEMA = """\
+OUTPUT CONTRACT: return ONLY a single JSON object conforming to this schema. No prose before or
+after, no markdown code fences, no comments. Use null for unknown optional fields, [] for empty
+lists. Every string field must respect its maxLength.
+
+SCHEMA:
+{schema}
+"""
+
+# Backends that constrain decoding to the schema themselves (Claude Code's --json-schema,
+# the API's output_config.format) do not need a copy of it in the prompt. Sending both
+# costs the same ~1.3k tokens twice per call — and the CLI runs two turns per call, so it
+# is really paid four times. This is the shorter contract for those backends.
+_CONTRACT_ENFORCED = """\
+OUTPUT CONTRACT: return ONLY the JSON object required by the output schema you have been given.
+No prose, no markdown fences, no comments. Use null for unknown optional fields and [] for empty
+lists. Keep string fields tight — a few sentences where a field calls for prose, never a wall of
+text; over-long values are truncated and lose their ending.
+"""
+
+
+def analysis_system(include_schema: bool = True) -> str:
+    """System prompt for the per-story analyst."""
+    contract = (_CONTRACT_WITH_SCHEMA.format(schema=_schema(StoryAnalysis))
+                if include_schema else _CONTRACT_ENFORCED)
+    return f"""\
 You are a democracy-aware news analyst. Your users are informed, time-poor readers who follow
 Bulgarian politics, global politics, and AI/tech/business. They want to know what actually
 happened, how it was spun, and whether democratic institutions got stronger or weaker.
@@ -85,13 +110,10 @@ established fact from claim, names framing when you see it, and admits what is u
 {BIAS_DOCTRINE}
 {STYLE}
 
-OUTPUT CONTRACT: return ONLY a single JSON object conforming to this schema. No prose before or
-after, no markdown code fences, no comments. Use null for unknown optional fields, [] for empty
-lists. Every string field must respect its maxLength.
+{contract}"""
 
-SCHEMA:
-{_schema(StoryAnalysis)}
-"""
+
+SYSTEM_ANALYSIS = analysis_system(include_schema=True)
 
 
 def build_analysis_user_prompt(cluster: StoryClusterIn, article_texts: dict[str, str]) -> str:
@@ -132,7 +154,11 @@ def build_analysis_user_prompt(cluster: StoryClusterIn, article_texts: dict[str,
 # --------------------------------------------------------------------------- #
 # 2. Daily deep dive
 # --------------------------------------------------------------------------- #
-SYSTEM_DEEPDIVE = f"""\
+def deepdive_system(include_schema: bool = True) -> str:
+    """System prompt for the daily long read."""
+    contract = (_CONTRACT_WITH_SCHEMA.format(schema=_schema(DeepDive))
+                if include_schema else _CONTRACT_ENFORCED)
+    return f"""\
 You are writing the single daily DEEP DIVE for a democracy-aware news digest. One story, the one
 that matters most for institutional health. Your reader already knows the headline; they want the
 machinery underneath: which law, which body, which veto point, whose interest, what happens next.
@@ -156,12 +182,10 @@ ADDITIONAL REQUIREMENTS:
     implies, argued by someone competent and honest.
   - `confidence`: your overall confidence in this analysis. Below 0.5 is a legitimate answer.
 
-OUTPUT CONTRACT: return ONLY a single JSON object conforming to this schema. No prose, no markdown
-fences.
+{contract}"""
 
-SCHEMA:
-{_schema(DeepDive)}
-"""
+
+SYSTEM_DEEPDIVE = deepdive_system(include_schema=True)
 
 
 def build_deepdive_user_prompt(
