@@ -106,6 +106,17 @@ NOISE: tuple[str, ...] = (
     "celebrity", "royal family", "obituary", "died aged", "box office",
 )
 
+# Section paths that publishers put in their own URLs. Far more reliable than guessing
+# at vocabulary: no keyword list will ever contain every athlete's surname, but
+# bbc.co.uk/sport/... says what the piece is without reading a word of it.
+NOISE_URL_SEGMENTS: tuple[str, ...] = (
+    "/sport", "/sports", "/football", "/tennis", "/olympics", "/formula1",
+    "/entertainment", "/celebrity", "/culture", "/arts", "/lifestyle", "/style",
+    "/travel", "/food", "/recipes", "/health-and-fitness", "/horoscope", "/weather",
+    "/obituaries", "/gaming", "/deals", "/shopping", "/sponsored",
+    "/sport-", "/lyubopitno", "/zabavlenie", "/sport/",
+)
+
 MIN_SIGNAL = 1          # a story must show at least this much of *something*
 CROSS_CATEGORY_MIN = 2  # signal needed to override the source's declared categories
 
@@ -144,9 +155,16 @@ def _haystack(article: ArticleIn) -> str:
 def is_noise(article: ArticleIn) -> bool:
     """Sport, weather, accidents, celebrity and service journalism.
 
-    Applied to the title only: a passing mention of 'earthquake' deep in a political
-    story should not disqualify it.
+    Two independent signals. The URL section path is checked first because it is what
+    the publisher itself says the piece is, and it catches the whole class — a football
+    transfer story survives every vocabulary list ever written, but not /sport/.
+
+    The word list is applied to the title only: a passing mention of 'earthquake' deep
+    in a political story should not disqualify it.
     """
+    url = (article.url or "").lower()
+    if any(seg in url for seg in NOISE_URL_SEGMENTS):
+        return True
     return bool(_matcher(NOISE).search((article.title or "").lower()))
 
 

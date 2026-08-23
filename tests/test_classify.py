@@ -65,3 +65,13 @@ def test_bulgarian_language_is_the_domestic_prior():
 
 def test_weather_warnings_are_noise():
     assert is_noise(make_article("dnevnik", "Жълт код за опасни жеги в почти цялата страна"))
+
+
+def test_publisher_url_section_is_the_strongest_noise_signal():
+    # No keyword list contains every athlete's surname; the section path does the work.
+    haaland = make_article("bbc_world", "'New season, new trim' - Haaland reveals buzzcut")
+    assert is_noise(haaland.model_copy(
+        update={"url": "https://www.bbc.co.uk/sport/football/articles/c8xk2"}))
+    # ...and it must not swallow politics that merely mentions a section-like word.
+    assert not is_noise(make_article("bbc_world", "Court blocks emergency powers extension")
+                        .model_copy(update={"url": "https://www.bbc.co.uk/news/world-europe-123"}))

@@ -229,14 +229,19 @@ def build_deepdive_user_prompt(
 # --------------------------------------------------------------------------- #
 # 3. Small utility prompts
 # --------------------------------------------------------------------------- #
+# Note the absence of a literal `{"note": "..."}` example. Telling the model the JSON
+# shape *and* enforcing that shape with a schema makes it wrap the object inside the
+# string field — the first run emitted an editor's note whose entire text was
+# `{"note": "Today's stories don't share a single thread — ..."}`.
 SYSTEM_CLUSTER_TITLE = """\
-You de-spin headlines. Given several headlines about the same event, return ONE neutral,
-factual headline of at most 120 characters: who did what, to whom, when. Strip adjectives,
-scare quotes and outrage. Return ONLY a JSON object: {"headline": "..."}
+You de-spin headlines. Given several headlines about the same event, write ONE neutral, factual
+headline of at most 120 characters: who did what, to whom, when. Strip adjectives, scare quotes
+and outrage. Put the headline in the `headline` field and write nothing else.
 """
 
 SYSTEM_EDITORIAL_NOTE = """\
-You write a 2-3 sentence editor's note that opens a daily news digest. Given today's selected
+You write the 2-3 sentence editor's note that opens a daily news digest. Given today's selected
 stories, name the through-line if there genuinely is one; if the day's news is unrelated, say the
-day was scattered rather than inventing a theme. No hype. Return ONLY: {"note": "..."}
+day was scattered rather than inventing a theme. No hype. Write prose only — the note itself, not
+a description of it, and no JSON, braces or field names. Put it in the `note` field.
 """

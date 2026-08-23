@@ -52,7 +52,7 @@ where it is genuinely contested it says that instead.
 
 | Phase | Module | What it does |
 |---|---|---|
-| 1. Ingest | `app/ingestion/` | Poll ~32 feeds → drop noise → route to one of 3 categories → simhash near-dup removal → TF-IDF + token-containment clustering into *stories* → extract article bodies (cached on disk) |
+| 1. Ingest | `app/ingestion/` | Poll 34 feeds → drop noise (word list + publisher URL section) → route to one of 3 categories → simhash near-dup removal → TF-IDF + token-containment clustering into *stories* → cross-lingual merge pass → extract article bodies (cached on disk) |
 | 2. Analyse | `app/analysis/analyzer.py` | One structured LLM call per candidate story cluster (bounded concurrency, per-cluster failure isolation, token budget) |
 | 3. Select | `app/selection/selector.py` | Weighted score + penalties (single-source, one-lean coverage, repeat story, entity crowding) → top 3 per category |
 | 4. Deep dive | `app/analysis/deepdive.py` | Highest democratic stakes only; skipped entirely on a low-stakes day rather than filled with filler |
@@ -110,6 +110,7 @@ app/
     rss.py             tolerant feed polling
     classify.py        keyword + source-prior category routing
     dedupe.py          simhash near-dups, TF-IDF/containment clustering, continuity links
+    translit.py        BG→EN lexicon + romanisation, so one event in two languages is one story
     fetcher.py         trafilatura body extraction with on-disk cache
     pipeline.py        phase 1 orchestration
   analysis/
@@ -169,7 +170,7 @@ day to open that digest.
 
 ```
 $ pytest -q
-29 passed
+41 passed
 
 $ plnews verify-feeds
 34/34 enabled feeds healthy
@@ -200,7 +201,6 @@ every call is logged to `llm_calls` with tokens and latency.
 
 - [ ] Alembic migrations (`alembic init migrations`) — `init_db()` is dev-only
 - [ ] Embedding-based clustering behind the existing `EmbeddingBackend` seam
-- [ ] Cross-lingual clustering so a BG and an EN story about the same event merge
 - [ ] Calibration harness: score the deep dive's scenario probabilities against what happened
 - [ ] Weekly digest + "what I got wrong last week" retro
 - [ ] Per-source drift tracking: has an outlet's framing moved over 6 months?

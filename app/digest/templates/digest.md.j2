@@ -41,7 +41,7 @@ deep_dive: {{ 'true' if d.deep_dive else 'false' }}
 {% endif %}
 
 {% if item.analysis.claims %}**Claims**
-{% for c in item.analysis.claims %}- `{{ c.status.value }}` {{ c.text }}{% if c.evidence %} — {{ c.evidence }}{% endif %}
+{% for c in item.analysis.claims %}- `{{ c.status.value }}` {{ c.text }}{{ (" — " ~ c.evidence) if c.evidence else "" }}
 {% endfor %}{% endif %}
 
 {% if item.analysis.bias.framing_devices or item.analysis.bias.omitted_context %}> [!quote] Framing check

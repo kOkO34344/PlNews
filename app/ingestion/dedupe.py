@@ -20,11 +20,16 @@ from typing import Protocol
 import structlog
 
 from app.ingestion.sources import BY_SLUG
+from app.ingestion.translit import cross_lingual_similarity
 from app.models.schemas import ArticleIn, ArticleRef, Category, StoryClusterIn
 
 log = structlog.get_logger(__name__)
 
 SIM_THRESHOLD = 0.42        # TF-IDF cosine similarity to merge into one story
+# Cross-lingual merge threshold, tuned on real 2026-08-23 output where one Zelensky
+# story split into three clusters. Same-story pairs scored 0.21-0.29 and different
+# Zelensky stories scored 0.07-0.11, so 0.16 sits in the gap with margin either side.
+CROSS_LINGUAL_THRESHOLD = 0.16
 OVERLAP_THRESHOLD = 0.5     # token containment fallback: short headlines dilute TF-IDF
 MIN_SHARED_TOKENS = 3       # guard against 0.5 containment on two-word titles
 SIMHASH_DISTANCE = 4        # hamming distance treated as "same article"
@@ -144,7 +149,10 @@ def cluster_articles(articles: list[ArticleIn], category: Category) -> list[Stor
         groups.append([i])
         assigned[i] = gid
         for j in range(i + 1, len(articles)):
-            if j not in assigned and same_story(i, j):
+            # Single linkage: match against *any* member, not just the seed. Seed-only
+            # comparison drops an article that matches a later member but not the first
+            # one in, which is how a running story fragments as it gets re-reported.
+            if j not in assigned and any(same_story(k, j) for k in groups[gid]):
                 assigned[j] = gid
                 groups[gid].append(j)
 
@@ -172,6 +180,67 @@ def cluster_articles(articles: list[ArticleIn], category: Category) -> list[Stor
     return clusters
 
 
+def merge_multilingual(clusters: list[StoryClusterIn]) -> list[StoryClusterIn]:
+    """Second pass: merge clusters that cover one event in different languages.
+
+    TF-IDF is blind across scripts, so a Bulgarian and an English report of the same
+    event survive the first pass as separate stories and each take a digest slot. This
+    compares every pair on a language-neutral signature (see app.ingestion.translit)
+    with single linkage between clusters.
+    """
+    if len(clusters) < 2:
+        return clusters
+
+    parent = list(range(len(clusters)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def union(i: int, j: int) -> None:
+        ri, rj = find(i), find(j)
+        if ri != rj:
+            parent[max(ri, rj)] = min(ri, rj)
+
+    titles = [[a.title for a in c.articles] or [c.headline] for c in clusters]
+    for i in range(len(clusters)):
+        for j in range(i + 1, len(clusters)):
+            if find(i) == find(j):
+                continue
+            best = max((cross_lingual_similarity(ti, tj) for ti in titles[i] for tj in titles[j]),
+                       default=0.0)
+            if best >= CROSS_LINGUAL_THRESHOLD:
+                log.info("dedupe.cross_lingual_merge", score=round(best, 3),
+                         a=clusters[i].headline[:60], b=clusters[j].headline[:60])
+                union(i, j)
+
+    merged: dict[int, StoryClusterIn] = {}
+    for idx, cluster in enumerate(clusters):
+        root = find(idx)
+        if root not in merged:
+            merged[root] = cluster
+            continue
+        base = merged[root]
+        seen = {a.url for a in base.articles}
+        combined = base.articles + [a for a in cluster.articles if a.url not in seen]
+        # Prefer the headline from the side with the widest independent coverage.
+        headline = (base.headline if base.source_count >= cluster.source_count
+                    else cluster.headline)
+        merged[root] = base.model_copy(update={
+            "articles": combined,
+            "headline": headline,
+            "first_seen": min(base.first_seen, cluster.first_seen),
+            "last_seen": max(base.last_seen, cluster.last_seen),
+        })
+
+    out = sorted(merged.values(), key=lambda c: (c.source_count, len(c.articles)), reverse=True)
+    if len(out) < len(clusters):
+        log.info("dedupe.multilingual", before=len(clusters), after=len(out))
+    return out
+
+
 def cluster_by_category(articles: list[ArticleIn],
                         categories: dict[str, Category]) -> dict[Category, list[StoryClusterIn]]:
     """`categories` maps article.url -> Category (from app.ingestion.classify)."""
@@ -180,7 +249,8 @@ def cluster_by_category(articles: list[ArticleIn],
         cat = categories.get(a.url)
         if cat:
             buckets[cat].append(a)
-    return {cat: cluster_articles(items, cat) for cat, items in buckets.items()}
+    return {cat: merge_multilingual(cluster_articles(items, cat))
+            for cat, items in buckets.items()}
 
 
 def match_continuity(cluster: StoryClusterIn, previous: list[tuple[str, str]]) -> str | None:
