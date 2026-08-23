@@ -3,6 +3,7 @@
 import { motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
 import { toneColor } from "@/lib/theme";
+import { useLocale } from "./LocaleContext";
 import type { TrendPoint } from "@/lib/api";
 
 /**
@@ -22,6 +23,7 @@ export default function Trace({
   onSelect?: (date: string) => void;
 }) {
   const reduced = useReducedMotion();
+  const { t } = useLocale();
   const [hover, setHover] = useState<TrendPoint | null>(null);
 
   if (series.length === 0) return null;
@@ -101,15 +103,14 @@ export default function Trace({
 
       <figcaption className="trace__caption">
         <span className="eyebrow">
-          {series.length}-day trace · scale ±{peak.toFixed(2)}
+          {t("trace.label", { n: series.length, peak: peak.toFixed(2) })}
         </span>
         <span className="datum">
-          {shown.date} · net{" "}
-          <strong style={{ color: toneColor(shown.net_direction) }}>
-            {shown.net_direction > 0 ? "+" : ""}
-            {shown.net_direction.toFixed(2)}
-          </strong>{" "}
-          · {shown.relevant} of 9 stories with an institutional stake
+          {t("trace.caption", {
+            date: shown.date,
+            net: `${shown.net_direction > 0 ? "+" : ""}${shown.net_direction.toFixed(2)}`,
+            relevant: shown.relevant,
+          })}
         </span>
       </figcaption>
     </figure>

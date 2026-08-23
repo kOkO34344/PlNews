@@ -111,6 +111,40 @@ def show(day: str = typer.Argument(None, help="YYYY-MM-DD, defaults to latest"),
 
 
 @app.command()
+def translate(lang: str = typer.Argument("bg", help="Target language code"),
+              day: str = typer.Option(None, help="YYYY-MM-DD, defaults to latest")) -> None:
+    """Translate a stored digest. The analyst writes in English; this renders it."""
+    from app import repository as repo
+    from app.analysis.llm import get_llm_client
+    from app.analysis.translate import translate_digest
+
+    async def _go() -> None:
+        # Two short sessions around the slow part: holding one open for the whole LLM run
+        # keeps a SQLite write transaction alive for minutes and blocks the API's reads.
+        with session_scope() as db:
+            digest = repo.get_digest(db, date.fromisoformat(day)) if day else repo.latest_digest(db)
+        if digest is None:
+            typer.echo("no digest to translate")
+            raise typer.Exit(code=1)
+
+        existing = (digest.translations or {}).get(lang)
+        result = await translate_digest(get_llm_client(), digest, lang, existing=existing)
+
+        with session_scope() as db:
+            repo.save_translation(db, digest.digest_date, lang, result)
+        from app.analysis.translate import is_complete
+
+        complete = is_complete(digest, result)
+        typer.echo(f"{digest.digest_date} → {lang}: {len(result.items)}/{len(digest.items)} stories"
+                   f", deep dive: {'yes' if result.deep_dive else 'no'}"
+                   f" — {'complete' if complete else 'incomplete, re-run to resume'}")
+        if not complete:
+            raise typer.Exit(code=2)   # so a retry wrapper can tell
+
+    asyncio.run(_go())
+
+
+@app.command()
 def push() -> None:
     """Send the latest stored digest to Telegram."""
     from app import repository as repo

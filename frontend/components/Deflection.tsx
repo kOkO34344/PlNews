@@ -1,7 +1,8 @@
 "use client";
 
 import { motion, useReducedMotion } from "motion/react";
-import { humanize, toneColor } from "@/lib/theme";
+import { toneColor } from "@/lib/theme";
+import { useLocale } from "./LocaleContext";
 
 /**
  * One democracy reading, drawn as a needle deflecting off the page's centre axis.
@@ -23,7 +24,9 @@ export default function Deflection({
   delay?: number;
 }) {
   const reduced = useReducedMotion();
+  const { t, dimension: dimName } = useLocale();
   const color = toneColor(direction);
+  const label = dimName(dimension);
   const magnitude = Math.min(Math.abs(direction) / 2, 1); // 0…1 of the half-track
   const solid = magnitude * Math.max(Math.min(confidence, 1), 0);
   const left = direction < 0;
@@ -34,15 +37,15 @@ export default function Deflection({
   return (
     <div className="deflection">
       <div className="deflection__meta">
-        <span className="deflection__label datum">{humanize(dimension)}</span>
+        <span className="deflection__label datum">{label}</span>
         <span className="deflection__value datum" style={{ color }}>
           {direction > 0 ? `+${direction}` : direction}
-          <span className="faint"> · {Math.round(confidence * 100)}% confident</span>
+          <span className="faint"> · {t("story.confidence", { n: Math.round(confidence * 100) })}</span>
         </span>
       </div>
 
       <div className="deflection__track" role="img"
-           aria-label={`${humanize(dimension)}: ${direction > 0 ? "+" : ""}${direction}, ${Math.round(confidence * 100)} percent confidence`}>
+           aria-label={`${label}: ${direction > 0 ? "+" : ""}${direction}, ${Math.round(confidence * 100)}%`}>
         <span className="deflection__axis" aria-hidden />
         {direction !== 0 && (
           <>

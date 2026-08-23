@@ -4,22 +4,19 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import DeepDive from "./DeepDive";
+import LocaleToggle from "./LocaleToggle";
 import StoryCard from "./StoryCard";
 import ThemeToggle from "./ThemeToggle";
 import Trace from "./Trace";
-import { CATEGORY_LABEL, toneColor } from "@/lib/theme";
-import type { Category, DailyDigest, TrendPoint } from "@/lib/api";
+import { useLocale } from "./LocaleContext";
+import { toneColor } from "@/lib/theme";
+import type { Category, DailyDigest, DigestItem, TrendPoint } from "@/lib/api";
 
 const ORDER: Category[] = ["bg_politics", "global_politics", "ai_tech_business"];
 
 type Filter = "all" | "erosion" | "strengthening" | "contested";
 
-const FILTERS: { key: Filter; label: string }[] = [
-  { key: "all", label: "all nine" },
-  { key: "erosion", label: "erosion only" },
-  { key: "strengthening", label: "strengthening" },
-  { key: "contested", label: "contested facts" },
-];
+const FILTERS: Filter[] = ["all", "erosion", "strengthening", "contested"];
 
 export default function Dashboard({
   digest,
@@ -32,13 +29,25 @@ export default function Dashboard({
 }) {
   const router = useRouter();
   const reduced = useReducedMotion();
+  const { locale, t, category, formatDate } = useLocale();
   const [filter, setFilter] = useState<Filter>("all");
   const [open, setOpen] = useState<string | null>(null);
   const [cursor, setCursor] = useState(0);
   const [keyboard, setKeyboard] = useState(false);
 
+  // A translated digest holds a full StoryAnalysis per story, so the swap is wholesale
+  // and no field can drift out of step with its English original.
+  const translation = locale === "en" ? null : (digest.translations?.[locale] ?? null);
+  const localised = useMemo<DigestItem[]>(() => {
+    if (!translation) return digest.items;
+    return digest.items.map((item) => {
+      const swapped = translation.items?.[item.analysis.cluster_key];
+      return swapped ? { ...item, analysis: swapped } : item;
+    });
+  }, [digest.items, translation]);
+
   const visible = useMemo(() => {
-    const items = [...digest.items].sort(
+    const items = [...localised].sort(
       (a, b) => ORDER.indexOf(a.category) - ORDER.indexOf(b.category) || a.rank - b.rank,
     );
     if (filter === "all") return items;
@@ -48,7 +57,7 @@ export default function Dashboard({
       if (filter === "strengthening") return d.relevant && d.net_direction > 0;
       return i.analysis.claims.some((c) => c.status === "contested" || c.status === "speculative");
     });
-  }, [digest.items, filter]);
+  }, [localised, filter]);
 
   const keys = useMemo(() => visible.map((i) => i.analysis.cluster_key), [visible]);
 
@@ -94,33 +103,38 @@ export default function Dashboard({
       <header className="masthead">
         <div className="masthead__bar">
           <p className="eyebrow">
-            3-3-3 · Sofia · {new Date(digest.digest_date).toLocaleDateString("en-GB", {
-              weekday: "long", day: "numeric", month: "long", year: "numeric",
-            })}
+            3-3-3 · {t("masthead.place")} · {formatDate(digest.digest_date)}
           </p>
           <div className="masthead__tools">
-            <span className="datum faint">j / k to move · o to open</span>
+            <span className="datum faint">{t("masthead.keys")}</span>
+            <LocaleToggle />
             <ThemeToggle />
           </div>
         </div>
 
         <h1 className="display">
-          The institutions moved{" "}
+          {t("masthead.moved")}{" "}
           <span style={{ color: toneColor(net) }}>
             {net > 0 ? "+" : ""}
             {net.toFixed(2)}
-          </span>{" "}
-          today.
+          </span>
+          {t("masthead.suffix")}
         </h1>
 
         <p className="lede masthead__note">
-          {digest.editorial_note ??
-            `Nine stories, ${relevant} of them with something institutional at stake.`}
+          {translation?.editorial_note ??
+            digest.editorial_note ??
+            t("masthead.fallbackNote", { n: relevant })}
         </p>
 
         {isSample && (
           <p className="banner mono">
-            Sample data. The API returned no digest — run <code>plnews build</code> to fill this in.
+            {t("banner.sample", { cmd: "plnews build" })}
+          </p>
+        )}
+        {!isSample && locale !== "en" && !translation && (
+          <p className="banner mono">
+            {t("banner.untranslated", { cmd: `plnews translate ${locale}` })}
           </p>
         )}
       </header>
@@ -134,16 +148,16 @@ export default function Dashboard({
       <nav className="filters" aria-label="Filter today's stories">
         {FILTERS.map((f) => (
           <button
-            key={f.key}
+            key={f}
             className="chip"
-            aria-pressed={filter === f.key}
-            onClick={() => setFilter(f.key)}
+            aria-pressed={filter === f}
+            onClick={() => setFilter(f)}
           >
-            {f.label}
+            {t(`filter.${f}`)}
           </button>
         ))}
         <span className="datum faint filters__count">
-          {visible.length} of {digest.items.length}
+          {t("filter.count", { shown: visible.length, total: digest.items.length })}
         </span>
       </nav>
 
@@ -152,9 +166,11 @@ export default function Dashboard({
         return (
           <section key={cat} className="section">
             <div className="section__head">
-              <h2 className="eyebrow section__label">{CATEGORY_LABEL[cat]}</h2>
+              <h2 className="eyebrow section__label">{category(cat)}</h2>
               <span className="datum faint">
-                {items.length} {items.length === 1 ? "reading" : "readings"}
+                {items.length === 1
+                  ? t("section.readings_one")
+                  : t("section.readings_other", { n: items.length })}
               </span>
             </div>
 
@@ -167,7 +183,7 @@ export default function Dashboard({
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                 >
-                  Nothing here under this filter.
+                  {t("section.empty")}
                 </motion.p>
               ) : (
                 items.map((item, i) => (
@@ -191,15 +207,25 @@ export default function Dashboard({
         );
       })}
 
-      {digest.deep_dive && <DeepDive dd={digest.deep_dive} refs={digest.deep_dive_refs} />}
+      {(translation?.deep_dive ?? digest.deep_dive) && (
+        <DeepDive
+          dd={translation?.deep_dive ?? digest.deep_dive!}
+          refs={digest.deep_dive_refs}
+        />
+      )}
 
       <footer className="colophon">
         <span className="datum">
-          {digest.stats?.fetched ?? 0} articles from {digest.stats?.sources ?? 0} sources →{" "}
-          {digest.stats?.clusters ?? 0} stories → 9 selected
+          {t("colophon.pipeline", {
+            fetched: digest.stats?.fetched ?? 0,
+            sources: digest.stats?.sources ?? 0,
+            clusters: digest.stats?.clusters ?? 0,
+          })}
         </span>
         <span className="datum faint">
-          generated {new Date(digest.generated_at).toISOString().slice(0, 16).replace("T", " ")} UTC
+          {t("colophon.generated", {
+            when: new Date(digest.generated_at).toISOString().slice(0, 16).replace("T", " "),
+          })}
         </span>
       </footer>
     </main>

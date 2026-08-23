@@ -3,7 +3,8 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
 import Deflection from "./Deflection";
-import { CLAIM_LABEL, LEAN_LABEL, directionLabel, tone, toneColor } from "@/lib/theme";
+import { tone, toneColor } from "@/lib/theme";
+import { useLocale } from "./LocaleContext";
 import type { DigestItem } from "@/lib/api";
 
 export default function StoryCard({
@@ -20,6 +21,7 @@ export default function StoryCard({
   focused?: boolean;
 }) {
   const reduced = useReducedMotion();
+  const { t, claim, direction: dirLabel, lean, dimension: dimName } = useLocale();
   const a = item.analysis;
   const dem = a.democracy;
   const net = dem.relevant ? dem.net_direction : 0;
@@ -36,7 +38,7 @@ export default function StoryCard({
       layout
     >
       <div className="story__head">
-        <span className="story__rank mono" aria-label={`rank ${item.rank} of three`}>
+        <span className="story__rank mono" aria-label={t("story.rankLabel", { n: item.rank })}>
           {String(item.rank).padStart(2, "0")}
         </span>
         <div className="story__title">
@@ -45,10 +47,10 @@ export default function StoryCard({
         </div>
         {dem.relevant ? (
           <span className="chip" data-tone={tone(net)}>
-            {directionLabel(net)}
+            {dirLabel(net)}
           </span>
         ) : (
-          <span className="chip">no institutional stake</span>
+          <span className="chip">{t("story.noStake")}</span>
         )}
       </div>
 
@@ -70,14 +72,14 @@ export default function StoryCard({
         <div className="story__sources">
           {item.refs.slice(0, 5).map((r) => (
             <a key={r.url} href={r.url} target="_blank" rel="noreferrer" className="chip"
-               title={`${r.source_name} — ${r.lean.replace(/_/g, " ")}, ${r.reliability} reliability`}>
+               title={`${r.source_name} — ${r.lean.replace(/_/g, " ")} / ${r.reliability}`}>
               {r.source_name}
-              <span className="faint">{LEAN_LABEL[r.lean] ?? "?"}</span>
+              <span className="faint">{lean(r.lean)}</span>
             </a>
           ))}
         </div>
         <button className="story__toggle mono" onClick={onToggle} aria-expanded={expanded}>
-          {expanded ? "close" : "read the analysis"}
+          {expanded ? t("story.close") : t("story.read")}
           <motion.span aria-hidden animate={{ rotate: expanded ? 180 : 0 }} className="story__caret">
             ↓
           </motion.span>
@@ -95,18 +97,18 @@ export default function StoryCard({
           >
             <div className="story__detail-inner">
               <section>
-                <p className="eyebrow">Why it matters</p>
+                <p className="eyebrow">{t("story.why")}</p>
                 <p className="lede">{a.why_it_matters}</p>
               </section>
 
               {dem.relevant && dem.impacts.length > 0 && (
                 <section>
-                  <p className="eyebrow">Reading, in words</p>
+                  <p className="eyebrow">{t("story.inWords")}</p>
                   <ul className="list">
                     {dem.impacts.map((i) => (
                       <li key={i.dimension}>
                         <span className="datum" style={{ color: toneColor(i.direction) }}>
-                          {i.dimension.replace(/_/g, " ")}
+                          {dimName(i.dimension)}
                         </span>{" "}
                         {i.rationale}
                       </li>
@@ -117,12 +119,12 @@ export default function StoryCard({
 
               {a.claims.length > 0 && (
                 <section>
-                  <p className="eyebrow">Claims, sorted by how well they stand up</p>
+                  <p className="eyebrow">{t("story.claims")}</p>
                   <ul className="claims">
                     {a.claims.map((c) => (
                       <li key={c.text}>
                         <span className="chip" data-claim={c.status}>
-                          {CLAIM_LABEL[c.status] ?? c.status}
+                          {claim(c.status)}
                         </span>
                         <span>
                           {c.text}
@@ -135,21 +137,21 @@ export default function StoryCard({
               )}
 
               <section className="framing">
-                <p className="eyebrow">Framing check</p>
+                <p className="eyebrow">{t("story.framing")}</p>
                 <p className="lede">{a.bias.coverage_spread}</p>
                 {a.bias.framing_devices.length > 0 && (
                   <p className="small soft">
-                    <strong>Devices.</strong> {a.bias.framing_devices.join("; ")}
+                    <strong>{t("story.devices")}</strong> {a.bias.framing_devices.join("; ")}
                   </p>
                 )}
                 {a.bias.omitted_context.length > 0 && (
                   <p className="small soft">
-                    <strong>Left out.</strong> {a.bias.omitted_context.join("; ")}
+                    <strong>{t("story.omitted")}</strong> {a.bias.omitted_context.join("; ")}
                   </p>
                 )}
                 {a.bias.propaganda_markers.length > 0 && (
                   <p className="small" style={{ color: "var(--erosion)" }}>
-                    <strong>Propaganda markers.</strong> {a.bias.propaganda_markers.join("; ")}
+                    <strong>{t("story.propaganda")}</strong> {a.bias.propaganda_markers.join("; ")}
                   </p>
                 )}
               </section>
@@ -158,14 +160,14 @@ export default function StoryCard({
                 <section className="doubt">
                   {a.uncertainty && (
                     <p className="lede">
-                      <span className="eyebrow">Not known</span>
+                      <span className="eyebrow">{t("story.unknown")}</span>
                       <br />
                       {a.uncertainty}
                     </p>
                   )}
                   {a.contrarian_read && (
                     <p className="lede">
-                      <span className="eyebrow">Strongest counter-reading</span>
+                      <span className="eyebrow">{t("story.counter")}</span>
                       <br />
                       {a.contrarian_read}
                     </p>
@@ -175,7 +177,7 @@ export default function StoryCard({
 
               {dem.watch_next.length > 0 && (
                 <section>
-                  <p className="eyebrow">What would settle it</p>
+                  <p className="eyebrow">{t("story.watch")}</p>
                   <ul className="list">
                     {dem.watch_next.map((w) => <li key={w}>{w}</li>)}
                   </ul>
@@ -185,7 +187,7 @@ export default function StoryCard({
               <footer className="story__score">
                 <span className="datum">{item.score.explanation}</span>
                 <span className="datum">
-                  score <strong>{item.score.total.toFixed(3)}</strong>
+                  {t("story.score")} <strong>{item.score.total.toFixed(3)}</strong>
                 </span>
                 <button
                   className="chip"
@@ -195,7 +197,7 @@ export default function StoryCard({
                     setTimeout(() => setCopied(false), 1600);
                   }}
                 >
-                  {copied ? "copied" : "copy summary"}
+                  {copied ? t("story.copied") : t("story.copy")}
                 </button>
               </footer>
             </div>

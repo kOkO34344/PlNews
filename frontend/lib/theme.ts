@@ -15,44 +15,8 @@ export function toneColor(direction: number): string {
   return "var(--ink-faint)";
 }
 
-export const DIRECTION_LABEL: Record<number, string> = {
-  [-2]: "severe erosion",
-  [-1]: "erosion",
-  0: "neutral",
-  1: "strengthening",
-  2: "significant strengthening",
-};
-
-export function directionLabel(direction: number): string {
-  return DIRECTION_LABEL[Math.round(direction)] ?? "mixed";
-}
-
-/** "rule_of_law" → "rule of law" */
-export function humanize(dimension: string): string {
-  return dimension.replace(/_/g, " ");
-}
-
-export const CATEGORY_LABEL: Record<string, string> = {
-  bg_politics: "Bulgarian politics",
-  global_politics: "Global politics",
-  ai_tech_business: "AI · tech · business",
-};
-
-/** Editorial lean, abbreviated for the source strip. */
-export const LEAN_LABEL: Record<string, string> = {
-  left: "L",
-  center_left: "CL",
-  center: "C",
-  center_right: "CR",
-  right: "R",
-  state_aligned: "state",
-  oligarch_linked: "owner",
-  unknown: "?",
-};
-
-export const CLAIM_LABEL: Record<string, string> = {
-  established: "established",
-  reported: "reported",
-  contested: "contested",
-  speculative: "speculative",
-};
+/**
+ * Label maps used to live here. They moved to lib/i18n.ts when the UI gained Bulgarian —
+ * a dimension name is vocabulary, not styling, and having one copy per locale in one
+ * place is what stops the two drifting apart.
+ */

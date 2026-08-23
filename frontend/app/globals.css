@@ -516,3 +516,9 @@ button.chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); 
   .trace__svg { height: 84px; }
   .section::before { display: none; }
 }
+
+/* --------------------------------------------------------- language switch */
+.langswitch { display: inline-flex; gap: 0; }
+.langswitch .chip { border-radius: 0; }
+.langswitch .chip:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.langswitch .chip:last-child  { border-radius: 0 var(--radius) var(--radius) 0; margin-left: -1px; }

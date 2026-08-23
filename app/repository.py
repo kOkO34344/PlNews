@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.ingestion.dedupe import simhash
 from app.ingestion.fetcher import url_hash
@@ -183,6 +184,30 @@ def save_digest(session: Session, digest: DailyDigest, cluster_ids: dict[str, in
             existing.payload = digest.deep_dive.model_dump(mode="json")
     session.flush()
     return row
+
+
+def save_translation(session: Session, d: date, lang: str, translation) -> bool:
+    """Merge one language into a stored digest. Leaves everything else untouched."""
+    row = session.scalar(select(Digest).where(Digest.digest_date == d))
+    if row is None:
+        return False
+    payload = dict(row.payload or {})
+    translations = dict(payload.get("translations") or {})
+    # Merge, never replace: a partial run must not clobber stories an earlier run
+    # already translated.
+    previous = dict(translations.get(lang) or {})
+    incoming = translation.model_dump(mode="json")
+    merged_items = {**(previous.get("items") or {}), **(incoming.get("items") or {})}
+    translations[lang] = {
+        "editorial_note": incoming.get("editorial_note") or previous.get("editorial_note"),
+        "items": merged_items,
+        "deep_dive": incoming.get("deep_dive") or previous.get("deep_dive"),
+    }
+    payload["translations"] = translations
+    row.payload = payload
+    flag_modified(row, "payload")   # JSON columns need the in-place change announced
+    session.flush()
+    return True
 
 
 def get_digest(session: Session, d: date) -> DailyDigest | None:

@@ -1,3 +1,5 @@
+// Read per request on the server, never inlined at build time. Ports 3000 and 8000 are
+// commonly taken; set API_BASE when the backend is elsewhere.
 export const API_BASE = process.env.API_BASE ?? "http://localhost:8000/api";
 
 export type Lean =
@@ -61,6 +63,17 @@ export interface DigestItem {
   refs: ArticleRef[];
 }
 
+/**
+ * A translated digest is the *same* structures with translated strings — a full
+ * StoryAnalysis per story rather than parallel arrays of loose text, so the UI can swap
+ * `item.analysis` wholesale and nothing can drift out of alignment.
+ */
+export interface DigestTranslation {
+  editorial_note?: string | null;
+  items: Record<string, StoryAnalysis>;
+  deep_dive?: DeepDive | null;
+}
+
 export interface DailyDigest {
   digest_date: string;
   generated_at: string;
@@ -69,6 +82,7 @@ export interface DailyDigest {
   deep_dive_refs: ArticleRef[];
   stats: Record<string, number>;
   editorial_note?: string | null;
+  translations?: Record<string, DigestTranslation> | null;
 }
 
 export interface TrendPoint {

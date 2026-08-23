@@ -246,6 +246,18 @@ class DigestItem(BaseModel):
     refs: list[ArticleRef]
 
 
+class DigestTranslation(BaseModel):
+    """A digest rendered in another language.
+
+    Whole `StoryAnalysis` objects rather than loose strings: the UI swaps
+    `item.analysis` wholesale, so a translated rationale cannot end up attached to the
+    wrong dimension.
+    """
+    editorial_note: str | None = None
+    items: dict[str, StoryAnalysis] = Field(default_factory=dict)
+    deep_dive: DeepDive | None = None
+
+
 class DailyDigest(BaseModel):
     digest_date: date
     generated_at: datetime
@@ -254,6 +266,7 @@ class DailyDigest(BaseModel):
     deep_dive_refs: list[ArticleRef] = Field(default_factory=list)
     stats: dict[str, int | float] = Field(default_factory=dict)
     editorial_note: str | None = None
+    translations: dict[str, DigestTranslation] = Field(default_factory=dict)
 
     def by_category(self, category: Category) -> list[DigestItem]:
         return sorted((i for i in self.items if i.category == category), key=lambda i: i.rank)
