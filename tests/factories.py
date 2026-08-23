@@ -14,12 +14,18 @@ NOW = datetime(2026, 8, 23, 9, 0, tzinfo=timezone.utc)
 
 def make_article(slug: str = "dnevnik", title: str = "Parliament votes on judicial reform",
                  url: str | None = None, minutes_ago: int = 30) -> ArticleIn:
+    """Language is taken from the source registry, exactly as the real pipeline does —
+    the classifier uses it as its domestic/foreign prior."""
+    from app.ingestion.sources import BY_SLUG
+
+    spec = BY_SLUG.get(slug)
     return ArticleIn(
         source_slug=slug,
         url=url or f"https://example.org/{slug}/{abs(hash(title)) % 10**8}",
         title=title,
         summary=f"{title}. Details follow.",
         published_at=NOW - timedelta(minutes=minutes_ago),
+        lang=spec.lang if spec else "en",
     )
 
 

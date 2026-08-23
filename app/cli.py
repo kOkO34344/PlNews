@@ -24,26 +24,42 @@ def initdb() -> None:
 
 
 @app.command("verify-feeds")
-def verify_feeds() -> None:
-    """Check every registered feed and report which ones are dead."""
+def verify_feeds(include_disabled: bool = typer.Option(False, help="Also probe disabled sources")) -> None:
+    """Check every registered feed. Exits non-zero if an *enabled* feed is broken."""
+    import asyncio
+
+    import feedparser
     import httpx
 
+    from app.config import settings
     from app.ingestion.sources import SOURCES
 
-    async def _go() -> None:
-        async with httpx.AsyncClient(headers={"User-Agent": "PlNewsBot/0.1"}) as client:
+    async def _go() -> int:
+        broken: list[str] = []
+        async with httpx.AsyncClient(headers={"User-Agent": settings.http_user_agent}) as client:
             for s in SOURCES:
+                if not s.enabled and not include_disabled:
+                    typer.echo(f"skip {s.slug:<20} (disabled — see ownership_note)")
+                    continue
                 try:
-                    r = await client.get(str(s.feed_url), follow_redirects=True, timeout=15)
-                    import feedparser
-
+                    r = await client.get(str(s.feed_url), follow_redirects=True, timeout=20)
                     n = len(feedparser.parse(r.content).entries)
-                    status = "ok " if n else "EMPTY"
-                    typer.echo(f"{status} {s.slug:<18} {r.status_code} entries={n}")
                 except Exception as exc:
-                    typer.echo(f"FAIL {s.slug:<18} {type(exc).__name__}: {str(exc)[:80]}")
+                    n, r = 0, None
+                    typer.echo(f"FAIL {s.slug:<20} {type(exc).__name__}: {str(exc)[:60]}")
+                else:
+                    mark = "ok  " if n else "DEAD"
+                    typer.echo(f"{mark} {s.slug:<20} {r.status_code} entries={n}")
+                if not n and s.enabled:
+                    broken.append(s.slug)
 
-    asyncio.run(_go())
+        enabled = [s for s in SOURCES if s.enabled]
+        typer.echo(f"\n{len(enabled) - len(broken)}/{len(enabled)} enabled feeds healthy")
+        if broken:
+            typer.echo(f"broken: {', '.join(broken)}")
+        return 1 if broken else 0
+
+    raise typer.Exit(code=asyncio.run(_go()))
 
 
 @app.command()
