@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "plnews"
 version = "0.1.0"
@@ -32,6 +36,11 @@ dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "ruff>=0.7", "mypy>=1.13", "respx>
 
 [project.scripts]
 plnews = "app.cli:app"
+
+# Without this, setuptools' flat-layout auto-discovery tries to package `data/`
+# and `frontend/` and refuses to build.
+[tool.setuptools.packages.find]
+include = ["app*"]
 
 [tool.ruff]
 line-length = 100
