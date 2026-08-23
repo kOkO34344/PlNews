@@ -36,12 +36,25 @@ Rules:
     ("Supreme Judicial Council" -> "Висш съдебен съвет", "European Commission" ->
     "Европейска комисия"). Personal names transliterate. Give an unfamiliar foreign
     institution its {language} rendering with the original in brackets on first use.
+  - NEVER substitute a different organisation. A party you do not recognise is not a
+    typo for a party you do: translate its name literally or transliterate it, and keep
+    its abbreviation derived from the name in front of you. Silently promoting an
+    unfamiliar party to a well-known one changes who did the thing, which is the one
+    error this system cannot absorb.
   - This is analysis, not press-release copy. Match the register: plain, specific,
     declarative. Do not soften a judgement, add hedging the original does not have, or
     make an erosion finding sound more polite than it is.
   - Do not add, drop or reorder any list item.
 
 Return only the JSON object.
+"""
+
+SOURCE_NAMES_BLOCK = """
+
+ORIGINAL HEADLINES from the reports this analysis was written on. Where a person, party
+or institution appears here already in {language}, use exactly that form — it is the
+authoritative spelling and it outranks anything you recall:
+{headlines}
 """
 
 
@@ -87,14 +100,18 @@ def _restore_invariants(original: StoryAnalysis, translated: StoryAnalysis) -> S
 
 
 async def _translate_one(client: LLMClient, obj, schema, language: str, purpose: str,
-                         max_tokens: int = 6000):
+                         max_tokens: int = 6000, headlines: list[str] | None = None):
     """`max_tokens` has to reflect the real size of the thing being translated.
 
     The Claude Code backend derives its timeout from it, and understating a deep dive —
     14.6k tokens of output, sent as 8000 — is what killed the first run at 420s.
     """
+    system = SYSTEM_TRANSLATE.format(language=language)
+    if headlines:
+        system += SOURCE_NAMES_BLOCK.format(
+            language=language, headlines="\n".join(f"  - {h}" for h in headlines))
     return (await client.complete_json(
-        system=SYSTEM_TRANSLATE.format(language=language),
+        system=system,
         user=obj.model_dump_json(),
         schema=schema,
         model=settings.llm_model_analysis,
@@ -115,11 +132,15 @@ async def translate_digest(client: LLMClient, digest: DailyDigest, lang: str = "
     language = LANGUAGE_NAMES.get(lang, lang)
     done = existing or DigestTranslation()
 
-    async def story(analysis: StoryAnalysis) -> tuple[str, StoryAnalysis | None]:
+    async def story(item) -> tuple[str, StoryAnalysis | None]:
+        analysis = item.analysis
         if analysis.cluster_key in done.items:
             return analysis.cluster_key, done.items[analysis.cluster_key]
         try:
-            out = await _translate_one(client, analysis, StoryAnalysis, language, "translate")
+            out = await _translate_one(
+                client, analysis, StoryAnalysis, language, "translate",
+                headlines=[r.title for r in item.refs if r.title],
+            )
             return analysis.cluster_key, _restore_invariants(analysis, out)
         except Exception as exc:
             log.warning("translate.story_failed", key=analysis.cluster_key, error=str(exc)[:200])
@@ -131,8 +152,10 @@ async def translate_digest(client: LLMClient, digest: DailyDigest, lang: str = "
         if done.deep_dive is not None:
             return done.deep_dive
         try:
+            refs = [r.title for r in (digest.deep_dive_refs or []) if r.title]
             out = await _translate_one(client, digest.deep_dive, DeepDive, language,
-                                       "translate_deepdive", max_tokens=18000)
+                                       "translate_deepdive", max_tokens=18000,
+                                       headlines=refs)
             # Probabilities and confidence are findings, not prose.
             scenarios = [d.model_copy(update={"probability": s.probability})
                          for s, d in zip(digest.deep_dive.scenarios, out.scenarios, strict=False)]
@@ -167,7 +190,7 @@ async def translate_digest(client: LLMClient, digest: DailyDigest, lang: str = "
             return None
 
     results = await asyncio.gather(
-        *(story(i.analysis) for i in digest.items), deep(), note()
+        *(story(i) for i in digest.items), deep(), note()
     )
     *stories, deep_dive, editorial = results
 
