@@ -56,7 +56,7 @@ where it is genuinely contested it says that instead.
 | 2. Analyse | `app/analysis/analyzer.py` | One structured LLM call per candidate story cluster (bounded concurrency, per-cluster failure isolation, token budget) |
 | 3. Select | `app/selection/selector.py` | Weighted score + penalties (single-source, one-lean coverage, repeat story, entity crowding) → top 3 per category |
 | 4. Deep dive | `app/analysis/deepdive.py` | Highest democratic stakes only; skipped entirely on a low-stakes day rather than filled with filler |
-| 5. Render | `app/digest/`, `app/delivery/` | Obsidian note + entity stubs + MOC; Telegram HTML chunks under the 4096-char cap |
+| 5. Render | `app/digest/`, `app/delivery/`, `frontend/` | Obsidian note + entity stubs + MOC; Telegram HTML chunks under the 4096-char cap; the dashboard |
 
 ---
 
@@ -128,9 +128,40 @@ app/
     telegram_bot.py    commands, inline feedback, push
   api/routes.py        read API + authenticated /run and /feedback
   jobs/scheduler.py    APScheduler cron
-frontend/              Next.js dashboard (no CSS framework, no chart lib)
+frontend/              Next.js 15 + React 19 dashboard (see below)
 tests/                 20 tests, no network, no LLM
 ```
+
+---
+
+## The dashboard
+
+`cd frontend && npm install && npm run dev`
+
+**Institutional Seismograph.** Democratic erosion is legal, incremental and boring — it does not
+look like a coup, it looks like a chart drifting. So the page is a chart-recorder printout rather
+than a news site: measurement paper, graphite ink, and a diverging two-pole scale because the data
+itself diverges.
+
+The signature is the **deflection**. One continuous axis runs down the page and every democracy
+reading is a needle swinging off it — left for erosion, right for strengthening. Each bar carries
+two numbers at once: it reaches as far as the assessed direction, but only the confidence fraction
+is solid ink, so a confident −1 and a shaky −2 look different at a glance. The same idea at day
+scale is the hero: a 30-day trace that draws itself left to right on load, autoscaled to the data
+and captioned with its scale, with a needle dropped from the baseline to each reading. Click any
+day to open that digest.
+
+- Palette: instrument paper `#e9ede7` / oxidised red `#a8321e` / verdigris `#1f6f5c`, and the same
+  instrument at night in dark mode. Three-state theme toggle (auto / paper / night).
+- Type: Bricolage Grotesque display, Literata body (it carries Cyrillic — Bulgarian source names
+  have to set in the same face), IBM Plex Mono for every number and label.
+- Motion: one orchestrated page-load sequence, then scroll-triggered deflections, an animated
+  expand for the full analysis, and animated scenario probabilities. `prefers-reduced-motion` turns
+  all of it off.
+- Interaction: filter to erosion / strengthening / contested-facts with animated re-layout, `j`/`k`
+  to walk the digest and `o` to open, and a keyboard cursor that only appears once you use it.
+- With the API down or before your first `plnews build`, it renders labelled sample data instead of
+  an empty page. Everything in `frontend/lib/sample.ts` is invented and the page says so.
 
 ---
 
@@ -138,16 +169,26 @@ tests/                 20 tests, no network, no LLM
 
 ```
 $ pytest -q
-20 passed
+29 passed
+
+$ plnews verify-feeds
+34/34 enabled feeds healthy
+
+$ cd frontend && npm run build
+✓ Compiled successfully
 ```
 
-Also smoke-verified end to end without network or LLM: schema creation, source registry sync,
+Smoke-verified end to end without network or LLM: schema creation, source registry sync,
 article/cluster upsert, analysis persistence, digest round-trip through the DB, Obsidian note +
 entity stubs + MOC generation, and every API endpoint including the auth guard.
 
-Not yet exercised against live services: real RSS endpoints, real Anthropic calls, real Telegram
-delivery. **Run `plnews verify-feeds` first** — the feed URLs in `sources.py` are best-effort and
-some will have moved.
+Verified against the live web: all 34 enabled feeds return entries, and a full ingestion run pulls
+~420 articles down to ~210 relevant ones and 36 story clusters across the three categories. The
+dashboard was built, run and reviewed in a browser in both themes and at mobile width.
+
+Not yet exercised: real Anthropic calls and real Telegram delivery — both need your keys. Re-run
+`plnews verify-feeds` before each deploy; feeds rot, and the command exits non-zero when an enabled
+one breaks, so it belongs in CI.
 
 ## Cost
 

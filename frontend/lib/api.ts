@@ -71,6 +71,14 @@ export interface DailyDigest {
   editorial_note?: string | null;
 }
 
+export interface TrendPoint {
+  date: string;
+  net_direction: number;
+  relevant: number;
+  erosion?: number;
+  strengthening?: number;
+}
+
 export interface DeepDive {
   title: string;
   executive_summary: string;
@@ -88,15 +96,17 @@ export interface DeepDive {
 
 async function get<T>(path: string): Promise<T | null> {
   try {
-    const res = await fetch(`${API_BASE}${path}`, { next: { revalidate: 300 } });
+    const res = await fetch(`${API_BASE}${path}`, { next: { revalidate: 60 } });
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
-    return null;   // dashboard degrades to an empty state rather than a crash
+    // The dashboard is useful even with the backend down: the caller falls back
+    // to sample data and says so on the page.
+    return null;
   }
 }
 
 export const getLatestDigest = () => get<DailyDigest>("/digests/latest");
 export const getDigest = (d: string) => get<DailyDigest>(`/digests/${d}`);
-export const getTrend = () =>
-  get<{ series: { date: string; net_direction: number; relevant: number }[] }>("/democracy/trend?days=30");
+export const getTrend = async (days = 30): Promise<TrendPoint[]> =>
+  (await get<{ series: TrendPoint[] }>(`/democracy/trend?days=${days}`))?.series ?? [];
