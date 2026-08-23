@@ -22,6 +22,13 @@ LOG="$ROOT/data/translate-$LANG_CODE.log"
 mkdir -p "$(dirname "$LOG")"
 
 for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
+  # Never run two translations at once: they would spend the same quota twice and race
+  # each other's writes. Wait out anything already in flight.
+  if pgrep -f "app.cli translate" | grep -qv "^$$\$"; then
+    echo "=== another translation is running; waiting ${INTERVAL}s" >> "$LOG"
+    sleep "$INTERVAL"
+    continue
+  fi
   echo "=== attempt $attempt/$MAX_ATTEMPTS · $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG"
   ( cd "$ROOT" && "$PY" -m app.cli translate "$LANG_CODE" ) >> "$LOG" 2>&1
   status=$?

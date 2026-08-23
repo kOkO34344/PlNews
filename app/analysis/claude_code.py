@@ -42,7 +42,13 @@ UNUSED_TOOLS = (
     "SlashCommand Skill Agent Artifact"
 )
 
+# A flat timeout does not fit calls whose sizes differ by 5x. A story analysis returns
+# ~3k tokens in well under a minute; translating a deep dive means reading ~15k and
+# writing ~15k, and a flat 420s killed exactly that call. The budget therefore scales
+# with the output the caller asked for, with a ceiling so a wedged process still dies.
 DEFAULT_TIMEOUT_S = 420
+SECONDS_PER_OUTPUT_TOKEN = 0.06
+MAX_TIMEOUT_S = 1500
 
 
 class ClaudeCodeUnavailable(LLMError):
@@ -94,6 +100,7 @@ class ClaudeCodeClient:
         effort: str = "medium", purpose: str = "analysis",
     ) -> LLMResult[T]:
         argv = self._argv(system=system, schema=schema, model=model, effort=effort)
+        timeout = min(max(self._timeout, max_tokens * SECONDS_PER_OUTPUT_TOKEN), MAX_TIMEOUT_S)
 
         async with self._sem:
             t0 = time.perf_counter()
@@ -106,13 +113,13 @@ class ClaudeCodeClient:
             )
             try:
                 out, err = await asyncio.wait_for(
-                    proc.communicate(user.encode("utf-8")), timeout=self._timeout
+                    proc.communicate(user.encode("utf-8")), timeout=timeout
                 )
             except TimeoutError:
                 proc.kill()
                 await proc.wait()
                 self.usage.errors += 1
-                raise LLMError(f"claude timed out after {self._timeout}s") from None
+                raise LLMError(f"claude timed out after {timeout:.0f}s ({purpose})") from None
             ms = int((time.perf_counter() - t0) * 1000)
 
         if proc.returncode != 0:

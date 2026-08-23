@@ -86,13 +86,19 @@ def _restore_invariants(original: StoryAnalysis, translated: StoryAnalysis) -> S
     })
 
 
-async def _translate_one(client: LLMClient, obj, schema, language: str, purpose: str):
+async def _translate_one(client: LLMClient, obj, schema, language: str, purpose: str,
+                         max_tokens: int = 6000):
+    """`max_tokens` has to reflect the real size of the thing being translated.
+
+    The Claude Code backend derives its timeout from it, and understating a deep dive —
+    14.6k tokens of output, sent as 8000 — is what killed the first run at 420s.
+    """
     return (await client.complete_json(
         system=SYSTEM_TRANSLATE.format(language=language),
         user=obj.model_dump_json(),
         schema=schema,
         model=settings.llm_model_analysis,
-        max_tokens=8000,
+        max_tokens=max_tokens,
         effort="low",
         purpose=purpose,
     )).data
@@ -125,7 +131,8 @@ async def translate_digest(client: LLMClient, digest: DailyDigest, lang: str = "
         if done.deep_dive is not None:
             return done.deep_dive
         try:
-            out = await _translate_one(client, digest.deep_dive, DeepDive, language, "translate")
+            out = await _translate_one(client, digest.deep_dive, DeepDive, language,
+                                       "translate_deepdive", max_tokens=18000)
             # Probabilities and confidence are findings, not prose.
             scenarios = [d.model_copy(update={"probability": s.probability})
                          for s, d in zip(digest.deep_dive.scenarios, out.scenarios, strict=False)]
