@@ -15,7 +15,10 @@ from typing import Any, Generic, Protocol, TypeVar
 
 import structlog
 from pydantic import BaseModel, ValidationError
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import (
+    retry, retry_if_exception_type, retry_if_not_exception_type, stop_after_attempt,
+    wait_exponential,
+)
 
 from app.config import settings
 
@@ -31,6 +34,10 @@ class LLMError(RuntimeError):
 
 class BudgetExceeded(LLMError):
     pass
+
+
+class Refusal(LLMError):
+    """The model declined. Retrying spends tokens to be told no again."""
 
 
 @dataclass
@@ -61,8 +68,16 @@ class LLMResult(Generic[T]):
 class LLMClient(Protocol):
     async def complete_json(
         self, *, system: str, user: str, schema: type[T], model: str, max_tokens: int = 4096,
-        temperature: float = 0.2, purpose: str = "analysis",
+        effort: str = "medium", purpose: str = "analysis",
     ) -> LLMResult[T]: ...
+
+
+def _is_schema_rejection(exc: Exception) -> bool:
+    """A 400 complaining about the output schema, as opposed to any other 400."""
+    if getattr(exc, "status_code", None) != 400:
+        return False
+    msg = str(exc).lower()
+    return any(k in msg for k in ("schema", "output_config", "format", "json_schema"))
 
 
 def extract_json(text: str) -> dict[str, Any]:
@@ -81,12 +96,13 @@ class AnthropicClient:
     """Bounded-concurrency Anthropic client that returns validated Pydantic models."""
 
     def __init__(self, api_key: str | None = None, max_concurrency: int | None = None,
-                 token_budget: int | None = None) -> None:
+                 token_budget: int | None = None, structured_output: bool = True) -> None:
         from anthropic import AsyncAnthropic  # local import keeps import-time cheap
 
         self._client = AsyncAnthropic(api_key=api_key or settings.anthropic_api_key)
         self._sem = asyncio.Semaphore(max_concurrency or settings.llm_max_concurrency)
         self._budget = token_budget or settings.llm_daily_token_budget
+        self._structured_output = structured_output
         self.usage = Usage()
 
     def _check_budget(self) -> None:
@@ -98,29 +114,58 @@ class AnthropicClient:
         reraise=True,
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=2, min=2, max=30),
-        retry=retry_if_exception_type((LLMError, ValidationError)),
+        retry=(retry_if_exception_type((LLMError, ValidationError))
+               & retry_if_not_exception_type(Refusal)),
     )
     async def complete_json(
         self, *, system: str, user: str, schema: type[T], model: str, max_tokens: int = 4096,
-        temperature: float = 0.2, purpose: str = "analysis",
+        effort: str = "medium", purpose: str = "analysis",
     ) -> LLMResult[T]:
+        """One JSON-returning call.
+
+        Three things here are load-bearing on current models and easy to get wrong:
+        assistant prefill and sampling parameters (`temperature`, `top_p`, `top_k`) are
+        both rejected with a 400 on Sonnet 5 / Opus 5 and the 4.6+ family, and spend is
+        steered with `output_config.effort` rather than a token budget.
+        """
         self._check_budget()
+
+        request: dict[str, Any] = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "system": system,
+            "messages": [{"role": "user", "content": user}],
+            "output_config": {"effort": effort},
+        }
+        if self._structured_output:
+            # Constrains decoding to the schema, so the JSON cannot come back malformed.
+            request["output_config"]["format"] = {
+                "type": "json_schema",
+                "schema": schema.model_json_schema(),
+            }
+
         async with self._sem:
             t0 = time.perf_counter()
-            resp = await self._client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                system=system,
-                messages=[
-                    {"role": "user", "content": user},
-                    # Prefill forces the model straight into JSON — no preamble to strip.
-                    {"role": "assistant", "content": "{"},
-                ],
-            )
+            try:
+                resp = await self._client.messages.create(**request)
+            except Exception as exc:
+                # Pydantic schemas carry keywords (maxLength, $defs) the constrained
+                # decoder may not accept. Rather than guess, find out once at runtime and
+                # fall back to the prompt-embedded schema for the rest of the run.
+                if self._structured_output and _is_schema_rejection(exc):
+                    log.warning("llm.structured_output_unsupported", error=str(exc)[:200])
+                    self._structured_output = False
+                    request["output_config"].pop("format", None)
+                    resp = await self._client.messages.create(**request)
+                else:
+                    raise
             ms = int((time.perf_counter() - t0) * 1000)
 
-        raw = "{" + "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+        if getattr(resp, "stop_reason", None) == "refusal":
+            self.usage.errors += 1
+            raise Refusal(f"model declined: {getattr(resp, 'stop_details', None)}")
+
+        raw = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
         tin = getattr(resp.usage, "input_tokens", 0)
         tout = getattr(resp.usage, "output_tokens", 0)
         self.usage.add(tin, tout, ms)
@@ -145,7 +190,7 @@ class StubClient:
         self.calls: list[tuple[str, str]] = []
 
     async def complete_json(self, *, system: str, user: str, schema: type[T], model: str,
-                            max_tokens: int = 4096, temperature: float = 0.2,
+                            max_tokens: int = 4096, effort: str = "medium",
                             purpose: str = "analysis") -> LLMResult[T]:
         self.calls.append((purpose, user[:200]))
         if self.factory is None:

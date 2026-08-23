@@ -128,7 +128,7 @@ async def _editorial_note(client: LLMClient, items: list[DigestItem]) -> str | N
     try:
         res = await client.complete_json(
             system=SYSTEM_EDITORIAL_NOTE, user="\n".join(lines), schema=Note,
-            model=settings.llm_model_analysis, max_tokens=400, temperature=0.4,
+            model=settings.llm_model_analysis, max_tokens=400, effort="low",
             purpose="editorial_note",
         )
         return res.data.note

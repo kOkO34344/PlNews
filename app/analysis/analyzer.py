@@ -34,7 +34,7 @@ async def analyze_cluster(client: LLMClient, cluster: StoryClusterIn,
             schema=StoryAnalysis,
             model=settings.llm_model_analysis,
             max_tokens=3000,
-            temperature=0.2,
+            effort="low",      # 36 of these a day; depth belongs in the deep dive
             purpose="analysis",
         )
     except BudgetExceeded:

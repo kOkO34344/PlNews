@@ -33,7 +33,7 @@ async def generate_deep_dive(client: LLMClient, item: DigestItem, cluster: Story
             schema=DeepDive,
             model=settings.llm_model_deepdive,
             max_tokens=8000,
-            temperature=0.3,
+            effort="high",     # one a day, and the one people actually read
             purpose="deepdive",
         )
     except Exception as exc:
