@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: plnews
+      POSTGRES_PASSWORD: plnews
+      POSTGRES_DB: plnews
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+
+  api:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+psycopg://plnews:plnews@db:5432/plnews
+    ports: ["8000:8000"]
+    depends_on: [db]
+    volumes: ["./:/srv/app"]
+
+  worker:
+    build: .
+    command: python -m app.jobs.scheduler
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+psycopg://plnews:plnews@db:5432/plnews
+    depends_on: [db]
+    volumes: ["./:/srv/app"]
+
+  bot:
+    build: .
+    command: python -m app.delivery.telegram_bot
+    env_file: [.env]
+    depends_on: [api]
+    volumes: ["./:/srv/app"]
+
+volumes:
+  pgdata:

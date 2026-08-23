@@ -1,0 +1,119 @@
+---
+title: "3-3-3 Digest — {{ d.digest_date }}"
+date: {{ d.digest_date }}
+generated: {{ d.generated_at.isoformat() }}
+type: news-digest
+tags: [digest/333{% for t in all_tags %}, topic/{{ t | slug }}{% endfor %}]
+democracy_net: {{ d.stats.get('net_direction', 0) }}
+democracy_relevant: {{ d.stats.get('democracy_relevant', 0) }}
+stories: {{ d.items | length }}
+deep_dive: {{ 'true' if d.deep_dive else 'false' }}
+---
+
+# 3-3-3 Digest — {{ d.digest_date }}
+
+{% if d.editorial_note %}> [!abstract] Editor's note
+> {{ d.editorial_note }}
+{% endif %}
+
+{% if d.stats.get('democracy_relevant', 0) %}> [!info] Democracy signal
+> {{ d.stats.get('democracy_relevant', 0) }} of {{ d.items | length }} stories carry an institutional
+> stake · net direction **{{ '%+.2f' | format(d.stats.get('net_direction', 0)) }}**
+> ({{ d.stats.get('erosion_stories', 0) }} erosive / {{ d.stats.get('strengthening_stories', 0) }} strengthening)
+{% endif %}
+
+{% for cat, label in categories %}
+## {{ label }}
+{% for item in d.by_category(cat) %}
+### {{ item.rank }}. {{ item.analysis.headline }}
+
+{{ item.analysis.what_happened }}
+
+**Why it matters.** {{ item.analysis.why_it_matters }}
+
+{% if item.analysis.democracy.relevant %}> [!{{ 'warning' if item.analysis.democracy.net_direction < 0 else 'success' if item.analysis.democracy.net_direction > 0 else 'note' }}] Democracy: {{ severity(item.analysis.democracy.net_direction) }} (significance {{ '%.2f' | format(item.analysis.democracy.significance) }})
+{% for imp in item.analysis.democracy.impacts %}> - **{{ imp.dimension.value | replace('_', ' ') }}** {{ '%+d' | format(imp.direction) }} — {{ imp.rationale }} _(confidence {{ '%.0f' | format(imp.confidence * 100) }}%)_
+{% endfor %}{% if item.analysis.democracy.precedent %}>
+> _Precedent:_ {{ item.analysis.democracy.precedent }}
+{% endif %}{% if item.analysis.democracy.watch_next %}>
+> _Watch:_ {{ item.analysis.democracy.watch_next | join('; ') }}
+{% endif %}
+{% endif %}
+
+{% if item.analysis.claims %}**Claims**
+{% for c in item.analysis.claims %}- `{{ c.status.value }}` {{ c.text }}{% if c.evidence %} — {{ c.evidence }}{% endif %}
+{% endfor %}{% endif %}
+
+{% if item.analysis.bias.framing_devices or item.analysis.bias.omitted_context %}> [!quote] Framing check
+> {{ item.analysis.bias.coverage_spread }}
+{% if item.analysis.bias.framing_devices %}> - Devices: {{ item.analysis.bias.framing_devices | join('; ') }}
+{% endif %}{% if item.analysis.bias.omitted_context %}> - Missing context: {{ item.analysis.bias.omitted_context | join('; ') }}
+{% endif %}{% if item.analysis.bias.propaganda_markers %}> - Propaganda markers: {{ item.analysis.bias.propaganda_markers | join('; ') }}
+{% endif %}> - Source diversity: {{ '%.2f' | format(item.analysis.bias.source_diversity) }}
+{% endif %}
+
+{% if item.analysis.uncertainty %}**Unknown.** {{ item.analysis.uncertainty }}
+{% endif %}
+{% if item.analysis.contrarian_read %}**Steelman.** {{ item.analysis.contrarian_read }}
+{% endif %}
+
+{% if item.analysis.entities %}Entities: {% for e in item.analysis.entities %}[[{{ e }}]]{% if not loop.last %} · {% endif %}{% endfor %}
+{% endif %}
+
+**Sources.** {% for r in item.refs %}[{{ r.source_name }}]({{ r.url }}) `{{ r.lean.value }}/{{ r.reliability.value }}`{% if not loop.last %} · {% endif %}{% endfor %}
+
+<sub>selection: {{ item.score.explanation }} → **{{ '%.3f' | format(item.score.total) }}**</sub>
+
+{% endfor %}
+{% endfor %}
+
+{% if d.deep_dive %}
+---
+
+## 🔍 Deep dive — {{ d.deep_dive.title }}
+
+{{ d.deep_dive.executive_summary }}
+
+### How we got here
+{{ d.deep_dive.background }}
+
+### The machinery
+{{ d.deep_dive.mechanisms }}
+
+### Stakeholders
+{% for s in d.deep_dive.stakeholders %}- {{ s }}
+{% endfor %}
+
+### Democratic stakes
+{{ d.deep_dive.democracy_analysis }}
+
+### Comparative precedent
+{{ d.deep_dive.comparative_precedent }}
+
+### Scenarios
+{% for s in d.deep_dive.scenarios %}
+**{{ s.name }}** — {{ '%.0f' | format(s.probability * 100) }}%
+{{ s.description }}
+{% if s.early_indicators %}Early indicators: {{ s.early_indicators | join('; ') }}{% endif %}
+{% endfor %}
+
+### What to watch
+{% for w in d.deep_dive.what_to_watch %}- [ ] {{ w }}
+{% endfor %}
+
+{% if d.deep_dive.open_questions %}### Open questions
+{% for q in d.deep_dive.open_questions %}- {{ q }}
+{% endfor %}{% endif %}
+
+> [!warning] Counterargument
+> {{ d.deep_dive.counterargument }}
+
+<sub>analysis confidence: {{ '%.0f' | format(d.deep_dive.confidence * 100) }}%</sub>
+
+**Sources.** {% for r in d.deep_dive_refs %}[{{ r.source_name }}]({{ r.url }}){% if not loop.last %} · {% endif %}{% endfor %}
+{% endif %}
+
+---
+<sub>Generated {{ d.generated_at.strftime('%Y-%m-%d %H:%M UTC') }} · {{ d.stats.get('fetched', 0) }} articles from {{ d.stats.get('sources', 0) }} sources → {{ d.stats.get('clusters', 0) }} stories → 9 selected · {{ d.stats.get('llm_tokens_in', 0) + d.stats.get('llm_tokens_out', 0) }} tokens</sub>
+
+Previous: [[{{ prev_date }} — 3-3-3 Digest]]
